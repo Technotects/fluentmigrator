@@ -30,12 +30,11 @@ namespace FluentMigrator.Runner
     public class MigrationRunner : IMigrationRunner
     {
         private Assembly _migrationAssembly;
-        private IAnnouncer _announcer;
-        private IStopWatch _stopWatch;
+        readonly IRunnerContext _runnerContext;
         private bool _alreadyOutputPreviewOnlyModeWarning;
 
         /// <summary>The arbitrary application context passed to the task runner.</summary>
-        public object ApplicationContext { get; private set; }
+        public object ApplicationContext { get { return _runnerContext.ApplicationContext; } }
 
         public bool SilentlyFail { get; set; }
 
@@ -48,16 +47,14 @@ namespace FluentMigrator.Runner
         public MigrationRunner(Assembly assembly, IRunnerContext runnerContext, IMigrationProcessor processor)
         {
             _migrationAssembly = assembly;
-            _announcer = runnerContext.Announcer;
+            _runnerContext = runnerContext;
             Processor = processor;
-            _stopWatch = runnerContext.StopWatch;
-            ApplicationContext = runnerContext.ApplicationContext;
 
             SilentlyFail = false;
             CaughtExceptions = null;
 
             Conventions = new MigrationConventions();
-            if (!string.IsNullOrEmpty(runnerContext.WorkingDirectory))
+            if(!string.IsNullOrEmpty(runnerContext.WorkingDirectory))
                 Conventions.GetWorkingDirectory = () => runnerContext.WorkingDirectory;
 
             VersionLoader = new VersionLoader(this, _migrationAssembly, Conventions);
@@ -81,19 +78,19 @@ namespace FluentMigrator.Runner
         {
             try
             {
-                foreach (var version in MigrationLoader.Migrations.Keys)
+                foreach(var version in MigrationLoader.Migrations.Keys)
                 {
                     ApplyMigrationUp(version);
                 }
 
                 ApplyProfiles();
 
-                if (useAutomaticTransactionManagement) { Processor.CommitTransaction(); }
+                if(useAutomaticTransactionManagement) { Processor.CommitTransaction(); }
                 VersionLoader.LoadVersionInfo();
             }
-            catch (Exception)
+            catch(Exception)
             {
-                if (useAutomaticTransactionManagement) { Processor.RollbackTransaction(); }
+                if(useAutomaticTransactionManagement) { Processor.RollbackTransaction(); }
                 throw;
             }
         }
@@ -107,16 +104,16 @@ namespace FluentMigrator.Runner
         {
             try
             {
-                foreach (var neededMigrationVersion in GetUpMigrationsToApply(targetVersion))
+                foreach(var neededMigrationVersion in GetUpMigrationsToApply(targetVersion))
                 {
                     ApplyMigrationUp(neededMigrationVersion);
                 }
-                if (useAutomaticTransactionManagement) { Processor.CommitTransaction(); }
+                if(useAutomaticTransactionManagement) { Processor.CommitTransaction(); }
                 VersionLoader.LoadVersionInfo();
             }
-            catch (Exception ex)
+            catch(Exception ex)
             {
-                if (useAutomaticTransactionManagement) { Processor.RollbackTransaction(); }
+                if(useAutomaticTransactionManagement) { Processor.RollbackTransaction(); }
                 throw;
             }
         }
@@ -129,7 +126,7 @@ namespace FluentMigrator.Runner
 
         private bool IsMigrationStepNeededForUpMigration(long versionOfMigration, long targetVersion)
         {
-            if (versionOfMigration <= targetVersion && !VersionLoader.VersionInfo.HasAppliedMigration(versionOfMigration))
+            if(versionOfMigration <= targetVersion && !VersionLoader.VersionInfo.HasAppliedMigration(versionOfMigration))
             {
                 return true;
             }
@@ -146,17 +143,17 @@ namespace FluentMigrator.Runner
         {
             try
             {
-                foreach (var neededMigrationVersion in GetDownMigrationsToApply(targetVersion))
+                foreach(var neededMigrationVersion in GetDownMigrationsToApply(targetVersion))
                 {
                     ApplyMigrationDown(neededMigrationVersion);
                 }
 
-                if (useAutomaticTransactionManagement) { Processor.CommitTransaction(); }
+                if(useAutomaticTransactionManagement) { Processor.CommitTransaction(); }
                 VersionLoader.LoadVersionInfo();
             }
-            catch (Exception)
+            catch(Exception)
             {
-                if (useAutomaticTransactionManagement) { Processor.RollbackTransaction(); }
+                if(useAutomaticTransactionManagement) { Processor.RollbackTransaction(); }
                 throw;
             }
         }
@@ -169,7 +166,7 @@ namespace FluentMigrator.Runner
 
         private bool IsMigrationStepNeededForDownMigration(long versionOfMigration, long targetVersion)
         {
-            if (versionOfMigration > targetVersion && VersionLoader.VersionInfo.HasAppliedMigration(versionOfMigration))
+            if(versionOfMigration > targetVersion && VersionLoader.VersionInfo.HasAppliedMigration(versionOfMigration))
             {
                 return true;
             }
@@ -179,15 +176,25 @@ namespace FluentMigrator.Runner
 
         private void ApplyMigrationUp(long version)
         {
-            if (!_alreadyOutputPreviewOnlyModeWarning && Processor.Options.PreviewOnly)
+            if(!_alreadyOutputPreviewOnlyModeWarning && Processor.Options.PreviewOnly)
             {
-                _announcer.Heading("PREVIEW-ONLY MODE");
+                _runnerContext.Announcer.Heading("PREVIEW-ONLY MODE");
                 _alreadyOutputPreviewOnlyModeWarning = true;
             }
 
-            if (!VersionLoader.VersionInfo.HasAppliedMigration(version))
+            if(!VersionLoader.VersionInfo.HasAppliedMigration(version))
             {
-                Up(MigrationLoader.Migrations[version]);
+                var migration = MigrationLoader.Migrations[version];
+                var migrationWithMetadata = migration as MigrationWithMetaDataAdapter;
+                if(migrationWithMetadata != null)
+                {
+                    if(migrationWithMetadata.IsBreakingChange && !_runnerContext.PreviewOnly && !_runnerContext.AllowBreakingChange)
+                    {
+                        throw new InvalidOperationException(string.Format("The migration {0} is identified as a breaking change, and will not be executed unless the necessary parameter (allowBreakingChange|abc) is passed to the runner.", migrationWithMetadata.MetaData.Type.Name));
+                    }
+                }
+
+                Up(migration);
                 VersionLoader.UpdateVersionInfo(version);
             }
         }
@@ -199,12 +206,12 @@ namespace FluentMigrator.Runner
                 Down(MigrationLoader.Migrations[version]);
                 VersionLoader.DeleteVersion(version);
             }
-            catch (KeyNotFoundException ex)
+            catch(KeyNotFoundException ex)
             {
                 string msg = string.Format("VersionInfo references version {0} but no Migrator was found attributed with that version.", version);
                 throw new Exception(msg, ex);
             }
-            catch (Exception ex)
+            catch(Exception ex)
             {
                 throw new Exception("Error rolling back version " + version, ex);
             }
@@ -221,21 +228,21 @@ namespace FluentMigrator.Runner
             {
                 var migrations = VersionLoader.VersionInfo.AppliedMigrations().Intersect(MigrationLoader.Migrations.Keys);
 
-                foreach (var migrationNumber in migrations.Take(steps))
+                foreach(var migrationNumber in migrations.Take(steps))
                 {
                     ApplyMigrationDown(migrationNumber);
                 }
 
                 VersionLoader.LoadVersionInfo();
 
-                if (!VersionLoader.VersionInfo.AppliedMigrations().Any())
+                if(!VersionLoader.VersionInfo.AppliedMigrations().Any())
                     VersionLoader.RemoveVersionTable();
 
-                if (useAutomaticTransactionManagement) { Processor.CommitTransaction(); }
+                if(useAutomaticTransactionManagement) { Processor.CommitTransaction(); }
             }
-            catch (Exception)
+            catch(Exception)
             {
-                if (useAutomaticTransactionManagement) { Processor.RollbackTransaction(); }
+                if(useAutomaticTransactionManagement) { Processor.RollbackTransaction(); }
                 throw;
             }
         }
@@ -252,9 +259,9 @@ namespace FluentMigrator.Runner
                 var migrations = VersionLoader.VersionInfo.AppliedMigrations().Intersect(MigrationLoader.Migrations.Keys);
 
                 // Get the migrations between current and the to version
-                foreach (var migrationNumber in migrations)
+                foreach(var migrationNumber in migrations)
                 {
-                    if (version < migrationNumber)
+                    if(version < migrationNumber)
                     {
                         ApplyMigrationDown(migrationNumber);
                     }
@@ -262,14 +269,14 @@ namespace FluentMigrator.Runner
 
                 VersionLoader.LoadVersionInfo();
 
-                if (version == 0 && !VersionLoader.VersionInfo.AppliedMigrations().Any())
+                if(version == 0 && !VersionLoader.VersionInfo.AppliedMigrations().Any())
                     VersionLoader.RemoveVersionTable();
 
-                if (useAutomaticTransactionManagement) { Processor.CommitTransaction(); }
+                if(useAutomaticTransactionManagement) { Processor.CommitTransaction(); }
             }
-            catch (Exception)
+            catch(Exception)
             {
-                if (useAutomaticTransactionManagement) { Processor.RollbackTransaction(); }
+                if(useAutomaticTransactionManagement) { Processor.RollbackTransaction(); }
                 throw;
             }
         }
@@ -281,10 +288,10 @@ namespace FluentMigrator.Runner
 
         private string GetMigrationName(IMigration migration)
         {
-            if (migration == null) throw new ArgumentNullException("migration");
+            if(migration == null) throw new ArgumentNullException("migration");
 
             IMigrationMetadata metadata = migration as IMigrationMetadata;
-            if (metadata != null)
+            if(metadata != null)
             {
                 return string.Format("{0}: {1}", metadata.Version, metadata.Type.Name);
             }
@@ -295,7 +302,7 @@ namespace FluentMigrator.Runner
         {
             string name = GetMigrationName(migration);
 
-            if (migration is IMigrationMetadata)
+            if(migration is IMigrationMetadata)
                 return name;
 
             return string.Format("{0}: {1}", version, name);
@@ -304,37 +311,37 @@ namespace FluentMigrator.Runner
         public void Up(IMigration migration)
         {
             var name = GetMigrationName(migration);
-            _announcer.Heading(string.Format("{0} migrating", name));
+            _runnerContext.Announcer.Heading(string.Format("{0} migrating", name));
 
             CaughtExceptions = new List<Exception>();
 
             var context = new MigrationContext(Conventions, Processor, MigrationAssembly, ApplicationContext);
             migration.GetUpExpressions(context);
 
-            _stopWatch.Start();
+            _runnerContext.StopWatch.Start();
             ExecuteExpressions(context.Expressions);
-            _stopWatch.Stop();
+            _runnerContext.StopWatch.Stop();
 
-            _announcer.Say(string.Format("{0} migrated", name));
-            _announcer.ElapsedTime(_stopWatch.ElapsedTime());
+            _runnerContext.Announcer.Say(string.Format("{0} migrated", name));
+            _runnerContext.Announcer.ElapsedTime(_runnerContext.StopWatch.ElapsedTime());
         }
 
         public void Down(IMigration migration)
         {
             var name = GetMigrationName(migration);
-            _announcer.Heading(string.Format("{0} reverting", name));
+            _runnerContext.Announcer.Heading(string.Format("{0} reverting", name));
 
             CaughtExceptions = new List<Exception>();
 
             var context = new MigrationContext(Conventions, Processor, MigrationAssembly, ApplicationContext);
             migration.GetDownExpressions(context);
 
-            _stopWatch.Start();
+            _runnerContext.StopWatch.Start();
             ExecuteExpressions(context.Expressions);
-            _stopWatch.Stop();
+            _runnerContext.StopWatch.Stop();
 
-            _announcer.Say(string.Format("{0} reverted", name));
-            _announcer.ElapsedTime(_stopWatch.ElapsedTime());
+            _runnerContext.Announcer.Say(string.Format("{0} reverted", name));
+            _runnerContext.Announcer.ElapsedTime(_runnerContext.StopWatch.ElapsedTime());
         }
 
         /// <summary>
@@ -345,12 +352,12 @@ namespace FluentMigrator.Runner
         {
             long insertTicks = 0;
             int insertCount = 0;
-            foreach (IMigrationExpression expression in expressions)
+            foreach(IMigrationExpression expression in expressions)
             {
                 try
                 {
                     expression.ApplyConventions(Conventions);
-                    if (expression is InsertDataExpression)
+                    if(expression is InsertDataExpression)
                     {
                         insertTicks += Time(() => expression.ExecuteWith(Processor));
                         insertCount++;
@@ -360,12 +367,12 @@ namespace FluentMigrator.Runner
                         AnnounceTime(expression.ToString(), () => expression.ExecuteWith(Processor));
                     }
                 }
-                catch (Exception er)
+                catch(Exception er)
                 {
-                    _announcer.Error(er.Message);
+                    _runnerContext.Announcer.Error(er.Message);
 
                     //catch the error and move onto the next expression
-                    if (SilentlyFail)
+                    if(SilentlyFail)
                     {
                         CaughtExceptions.Add(er);
                         continue;
@@ -374,46 +381,46 @@ namespace FluentMigrator.Runner
                 }
             }
 
-            if (insertCount > 0)
+            if(insertCount > 0)
             {
                 var avg = new TimeSpan(insertTicks / insertCount);
                 var msg = string.Format("-> {0} Insert operations completed in {1} taking an average of {2}", insertCount, new TimeSpan(insertTicks), avg);
-                _announcer.Say(msg);
+                _runnerContext.Announcer.Say(msg);
             }
         }
 
         private void AnnounceTime(string message, Action action)
         {
-            _announcer.Say(message);
+            _runnerContext.Announcer.Say(message);
 
-            _stopWatch.Start();
+            _runnerContext.StopWatch.Start();
             action();
-            _stopWatch.Stop();
+            _runnerContext.StopWatch.Stop();
 
-            _announcer.ElapsedTime(_stopWatch.ElapsedTime());
+            _runnerContext.Announcer.ElapsedTime(_runnerContext.StopWatch.ElapsedTime());
         }
 
         private long Time(Action action)
         {
-            _stopWatch.Start();
+            _runnerContext.StopWatch.Start();
 
             action();
 
-            _stopWatch.Stop();
+            _runnerContext.StopWatch.Stop();
 
-            return _stopWatch.ElapsedTime().Ticks;
+            return _runnerContext.StopWatch.ElapsedTime().Ticks;
         }
 
         public void ValidateVersionOrder()
         {
             IEnumerable<KeyValuePair<long, IMigration>> unappliedVersions = MigrationLoader.Migrations.Where(kvp => MigrationVersionLessThanGreatestAppliedMigration(kvp.Key));
 
-            if (unappliedVersions.Any())
+            if(unappliedVersions.Any())
             {
                 throw new VersionOrderInvalidException(unappliedVersions);
             }
 
-            _announcer.Say("Version ordering valid.");
+            _runnerContext.Announcer.Say("Version ordering valid.");
         }
 
         public void ListMigrations()
@@ -421,7 +428,7 @@ namespace FluentMigrator.Runner
             IVersionInfo currentVersionInfo = this.VersionLoader.VersionInfo;
             long currentVersion = currentVersionInfo.Latest();
 
-            _announcer.Heading("Migrations");
+            _runnerContext.Announcer.Heading("Migrations");
 
             foreach(KeyValuePair<long, IMigration> migration in MigrationLoader.Migrations)
             {
@@ -432,9 +439,9 @@ namespace FluentMigrator.Runner
                                                 isCurrent ? " (current)" : string.Empty);
 
                 if(isCurrent)
-                    _announcer.Emphasize(message);
+                    _runnerContext.Announcer.Emphasize(message);
                 else
-                    _announcer.Say(message);
+                    _runnerContext.Announcer.Say(message);
             }
         }
 

@@ -24,10 +24,12 @@ namespace FluentMigrator
     public class MigrationAttribute : Attribute
     {
         public long Version { get; private set; }
+        public bool IsBreakingChange { get; private set; }
 
-        public MigrationAttribute(long version)
+        public MigrationAttribute(long version, bool isBreakingChange = false)
         {
             Version = version;
+            IsBreakingChange = isBreakingChange;
         }
     }
 }

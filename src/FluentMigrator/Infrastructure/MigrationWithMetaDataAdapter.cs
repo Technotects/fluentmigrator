@@ -24,8 +24,8 @@ namespace FluentMigrator.Infrastructure
     {
         public MigrationWithMetaDataAdapter(IMigration migration, IMigrationMetadata metadata)
         {
-            if (migration == null) throw new ArgumentNullException("migration");
-            if (metadata == null) throw new ArgumentNullException("metadata");
+            if(migration == null) throw new ArgumentNullException("migration");
+            if(metadata == null) throw new ArgumentNullException("metadata");
             Migration = migration;
             MetaData = metadata;
         }
@@ -38,6 +38,11 @@ namespace FluentMigrator.Infrastructure
         public long Version
         {
             get { return MetaData.Version; }
+        }
+
+        public bool IsBreakingChange
+        {
+            get { return MetaData.IsBreakingChange; }
         }
 
         public IMigration Migration { get; private set; }

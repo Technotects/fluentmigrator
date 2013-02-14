@@ -24,6 +24,7 @@ namespace FluentMigrator.Infrastructure
     {
         Type Type { get; }
         long Version { get; }
+        bool IsBreakingChange { get; }
         object Trait(string name);
         bool HasTrait(string name);
     }

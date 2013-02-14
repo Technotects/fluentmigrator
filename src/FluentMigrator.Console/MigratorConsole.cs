@@ -49,6 +49,7 @@ namespace FluentMigrator.Console
         public bool Verbose;
         public long Version;
         public string WorkingDirectory;
+        public bool AllowBreakingChange;
 
         public RunnerContext RunnerContext { get; private set;}
 
@@ -158,6 +159,11 @@ namespace FluentMigrator.Console
                                             "tag=",
                                             "Filters the migrations to be run by tag.",
                                             v => { Tags.Add(v); }
+                                            },
+                                        {
+                                            "allowBreakingChange|abc",
+                                            "Allows execution of migrations marked as breaking changes.",
+                                            v => { AllowBreakingChange = true; }
                                             },
                                         {
                                             "help|h|?",
@@ -278,7 +284,8 @@ namespace FluentMigrator.Console
                 Timeout = Timeout,
                 ConnectionStringConfigPath = ConnectionStringConfigPath,
                 ApplicationContext = ApplicationContext,
-                Tags = Tags
+                Tags = Tags,
+                AllowBreakingChange = AllowBreakingChange
             };
 
             new TaskExecutor(RunnerContext).Execute();
