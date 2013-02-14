@@ -432,13 +432,21 @@ namespace FluentMigrator.Runner
 
             foreach(KeyValuePair<long, IMigration> migration in MigrationLoader.Migrations)
             {
-                string migrationName = GetMigrationName(migration.Key, migration.Value);
-                bool isCurrent = migration.Key == currentVersion;
-                string message = string.Format("{0}{1}",
-                                                migrationName,
-                                                isCurrent ? " (current)" : string.Empty);
+                var isBreakingChange = false;
+                var migrationWithMetadata = migration.Value as MigrationWithMetaDataAdapter;
+                if(migrationWithMetadata != null)
+                {
+                    isBreakingChange = migrationWithMetadata.IsBreakingChange;
+                }
 
-                if(isCurrent)
+                var migrationName = GetMigrationName(migration.Key, migration.Value);
+                var isCurrent = migration.Key == currentVersion;
+                var message = string.Format("{0}{1}{2}",
+                                                migrationName,
+                                                isCurrent ? " (current)" : string.Empty,
+                                                isBreakingChange ? " (BREAKING)" : string.Empty);
+
+                if(isCurrent || isBreakingChange)
                     _runnerContext.Announcer.Emphasize(message);
                 else
                     _runnerContext.Announcer.Say(message);
